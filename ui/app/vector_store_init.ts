@@ -3,6 +3,20 @@ import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { Document } from "langchain/document";
 import { OpenAIEmbeddings } from "@langchain/openai";
 
+// Interface for use in documents mapping
+interface DataEntry {
+  content: string;
+  metadata: {
+    source: string;
+    loc: {
+      lines: {
+        from: number;
+        to: number;
+      };
+    };
+  };
+}
+
 // Async function to initialize and export the vector store retriever
 async function initializeVectorStore() {
   // Load and parse the JSON file asynchronously
@@ -16,7 +30,7 @@ async function initializeVectorStore() {
 
   // Prepare vectors and documents arrays
   const vectors = data.map((entry: { embedding: Iterable<number> }) => Float32Array.from(entry.embedding));
-  const documents = data.map((entry: { content: any; metadata: any }) =>
+  const documents = data.map((entry: DataEntry) =>
     new Document({
       pageContent: entry.content,
       metadata: entry.metadata,
