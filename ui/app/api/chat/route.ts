@@ -34,7 +34,7 @@ Your goal is to help users gain insights about the book, provide information abo
 {context}
 <context>
 `;
-
+ 
 const prompt = ChatPromptTemplate.fromMessages([
   ["system", SYSTEM_TEMPLATE],
   new MessagesPlaceholder("messages"),
