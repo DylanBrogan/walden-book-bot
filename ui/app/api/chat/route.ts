@@ -49,15 +49,9 @@ const queryTransformPrompt = ChatPromptTemplate.fromMessages([
   ],
 ]);
 
-// Parser for chain retriever
+// Parser for retriever chain
 const parseRetrieverInput = (params: { messages: BaseMessage[] }) => {
-  if (params && params.content && Array.isArray(params.content) && params.content.length > 0) {
-    return params.content[0].text;
-  } else {
-    // Handle the case where the input is not in the expected format
-    const errorMessage = `Invalid input format for parseRetrieverInput. Input params: ${JSON.stringify(params)}`;
-    throw new Error(errorMessage);
-  }
+  return params.messages[params.messages.length - 1].content;
 };
 
 export const POST = async (request: Request) => {
