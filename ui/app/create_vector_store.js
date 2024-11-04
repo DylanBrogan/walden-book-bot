@@ -37,5 +37,5 @@ const vectorData = vectorStore.memoryVectors.map(entry => ({
   id: entry.id
 }));
 
-fs.writeFileSync("app/api/vector_store.json", JSON.stringify(vectorData, null, 2));
-console.log("Vector store saved to app/api/vector_store.json");
+fs.writeFileSync("vector_store.json", JSON.stringify(vectorData, null, 2));
+console.log("Vector store saved to vector_store.json");
