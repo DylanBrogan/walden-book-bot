@@ -8,7 +8,13 @@ import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 import { BaseMessage } from "@langchain/core/messages";
 
-const model = new AzureChatOpenAI();
+const model = new AzureChatOpenAI({
+  azureOpenAIApiDeploymentName: "gpt-35-turbo-2",
+  azureOpenAIApiKey: "6fcf24c200bb4ca1bedd7fb7c32a7f47",
+  azureOpenAIApiInstanceName: "dbrog-m2agopml-eastus",
+  azureOpenAIEndpoint: "https://dbrog-m2agopml-eastus.openai.azure.com/",
+  azureOpenAIApiVersion: "2024-06-01"
+});
 export const maxDuration = 30;
 
 // Create a system & human prompt for the chat model
