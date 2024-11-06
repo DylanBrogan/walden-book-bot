@@ -13,7 +13,7 @@ const model = new AzureChatOpenAI({
   azureOpenAIApiKey: "6fcf24c200bb4ca1bedd7fb7c32a7f47",
   azureOpenAIApiInstanceName: "dbrog-m2agopml-eastus",
   azureOpenAIEndpoint: "https://dbrog-m2agopml-eastus.openai.azure.com/",
-  azureOpenAIApiVersion: "2024-06-01"
+  azureOpenAIApiVersion: "2024-08-01-preview"
 });
 export const maxDuration = 30;
 

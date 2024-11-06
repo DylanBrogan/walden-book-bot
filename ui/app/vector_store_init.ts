@@ -25,7 +25,11 @@ async function initializeVectorStore() {
   // Initialize embeddings (configure for Azure if needed)
   const embeddings = new OpenAIEmbeddings(
     {
-      azureOpenAIApiDeploymentName: "text-embedding-ada-002"
+      azureOpenAIApiDeploymentName: "text-embedding-ada-002",
+      azureOpenAIApiVersion: "2023-05-15",
+      azureOpenAIApiKey: "6fcf24c200bb4ca1bedd7fb7c32a7f47",
+      azureOpenAIApiInstanceName: "dbrog-m2agopml-eastus",
+      azureOpenAIEndpoint: "https://dbrog-m2agopml-eastus.openai.azure.com/",
     });
 
   // Prepare vectors and documents arrays
