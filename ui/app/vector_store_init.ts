@@ -20,7 +20,7 @@ interface DataEntry {
 // Async function to initialize and export the vector store retriever
 async function initializeVectorStore() {
   // Load and parse the JSON file asynchronously
-  const data = JSON.parse(fs.readFileSync("vector_store.json", "utf8"));
+  const data = JSON.parse(fs.readFileSync(process.cwd() + "/vector_store.json", "utf8"));
 
   // Initialize embeddings (configure for Azure if needed)
   const embeddings = new OpenAIEmbeddings(
