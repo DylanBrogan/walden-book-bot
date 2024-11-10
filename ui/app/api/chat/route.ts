@@ -10,6 +10,7 @@ import { BaseMessage } from "@langchain/core/messages";
 
 
 import { appInsights } from "../../AppInsights";
+import { isContext } from "vm";
 
 const model = new AzureChatOpenAI({
   azureOpenAIApiDeploymentName: "gpt-35-turbo-2",
@@ -65,6 +66,10 @@ const parseRetrieverInput = (params: { messages: BaseMessage[] }) => {
 
 export const POST = async (request: Request) => {
 
+
+  try {
+
+  
   console.log("WITHIN POST METHOD")
   if (appInsights) {
     appInsights.trackTrace({ message: 'Within Post Method' });
@@ -147,4 +152,12 @@ export const POST = async (request: Request) => {
   }
   
   return LangChainAdapter.toDataStreamResponse(transformedStream);
+  }
+  catch (ex)
+  {
+    appInsights.trackException({
+      exception: ex as Error, // The actual exception object
+      properties: { location: "handler loc" } // Optional custom properties
+    });
+  }
 };
