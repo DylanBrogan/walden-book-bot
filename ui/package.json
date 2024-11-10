@@ -15,6 +15,8 @@
     "@langchain/community": "^0.3.11",
     "@langchain/core": "^0.3.16",
     "@langchain/openai": "^0.3.11",
+    "@microsoft/applicationinsights-react-js": "^17.3.4",
+    "@microsoft/applicationinsights-web": "^3.3.4",
     "ai": "^3.4.28",
     "next": "^14.2.15",
     "react": "^18",

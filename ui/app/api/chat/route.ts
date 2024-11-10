@@ -8,6 +8,9 @@ import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 import { BaseMessage } from "@langchain/core/messages";
 
+
+import { appInsights } from "../../AppInsights";
+
 const model = new AzureChatOpenAI({
   azureOpenAIApiDeploymentName: "gpt-35-turbo-2",
   azureOpenAIApiKey: "6fcf24c200bb4ca1bedd7fb7c32a7f47",
@@ -63,6 +66,9 @@ const parseRetrieverInput = (params: { messages: BaseMessage[] }) => {
 export const POST = async (request: Request) => {
 
   console.log("WITHIN POST METHOD")
+  if (appInsights) {
+    appInsights.trackTrace({ message: 'Within Post Method' });
+  }
 
   // Get user query as string
   const requestData = await request.json() as { messages: Message[] };
@@ -75,7 +81,8 @@ export const POST = async (request: Request) => {
   // Initialize retriever from vector_store_init.ts
   const retriever = await vectorStoreRetriever; 
 
-  if (!retriever) {
+  if (appInsights && !retriever) {
+    appInsights.trackTrace({ message: 'Ret not Initialized' });
     throw Error("Retriever not Initialized");
   }
 
@@ -85,7 +92,8 @@ export const POST = async (request: Request) => {
     prompt: prompt,
   });
 
-  if (!documentChain) {
+  if (appInsights && !documentChain) {
+    appInsights.trackTrace({ message: 'DC not Initialized' });
     throw Error("documentChain not Initialized");
   }
 
@@ -98,7 +106,8 @@ export const POST = async (request: Request) => {
     queryTransformPrompt.pipe(model).pipe(new StringOutputParser()).pipe(retriever),
   ]).withConfig({ runName: "chat_retriever_chain" });
 
-  if (!queryTransformingRetrieverChain) {
+  if (appInsights && !queryTransformingRetrieverChain) {
+    appInsights.trackTrace({ message: 'QTRC  not Initialized' });
     throw Error("queryTransformingRetrieverChain not Initialized");
   }
 
@@ -108,14 +117,16 @@ export const POST = async (request: Request) => {
     answer: documentChain,
   });
 
-  if (!conversationalRetrievalChain) {
+  if (appInsights && !conversationalRetrievalChain) {
+    appInsights.trackTrace({ message: 'ConvRetChain  not Initialized' });
     throw Error("conversationalRetrievalChain not Initialized");
   }
 
   // Stream the response
   const stream = await conversationalRetrievalChain.stream({"messages": query});
 
-  if (!stream) {
+  if (appInsights && !stream) {
+    appInsights.trackTrace({ message: 'Stream  not Initialized' });
     throw Error("stream not Initialized");
   }
 
@@ -130,7 +141,8 @@ export const POST = async (request: Request) => {
       controller.close();
     },
   });
-  if (!transformedStream) {
+  if (appInsights && !transformedStream) {
+    appInsights.trackTrace({ message: 'TransformedStream not Initialized' });
     throw Error("transformedStream not Initialized");
   }
   
