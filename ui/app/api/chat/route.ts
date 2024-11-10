@@ -62,6 +62,8 @@ const parseRetrieverInput = (params: { messages: BaseMessage[] }) => {
 
 export const POST = async (request: Request) => {
 
+  console.log("WITHIN POST METHOD")
+
   // Get user query as string
   const requestData = await request.json() as { messages: Message[] };
   const query = requestData.messages.pop();
@@ -73,11 +75,19 @@ export const POST = async (request: Request) => {
   // Initialize retriever from vector_store_init.ts
   const retriever = await vectorStoreRetriever; 
 
+  if (!retriever) {
+    throw Error("Retriever not Initialized");
+  }
+
   // Chain to use context with questions
   const documentChain = await createStuffDocumentsChain({
     llm: model,
     prompt: prompt,
   });
+
+  if (!documentChain) {
+    throw Error("documentChain not Initialized");
+  }
 
   // Below is attempt to introduce chat messages into context to allow follow-up questions, currently non-functional
   const queryTransformingRetrieverChain = RunnableBranch.from([
@@ -88,14 +98,26 @@ export const POST = async (request: Request) => {
     queryTransformPrompt.pipe(model).pipe(new StringOutputParser()).pipe(retriever),
   ]).withConfig({ runName: "chat_retriever_chain" });
 
+  if (!queryTransformingRetrieverChain) {
+    throw Error("queryTransformingRetrieverChain not Initialized");
+  }
+
   const conversationalRetrievalChain = RunnablePassthrough.assign({
     context: queryTransformingRetrieverChain,
   }).assign({
     answer: documentChain,
   });
 
+  if (!conversationalRetrievalChain) {
+    throw Error("conversationalRetrievalChain not Initialized");
+  }
+
   // Stream the response
   const stream = await conversationalRetrievalChain.stream({"messages": query});
+
+  if (!stream) {
+    throw Error("stream not Initialized");
+  }
 
   // Stream is in format {"answer": "chunk"}. This serves as a map to make stream streamable
   const transformedStream = new ReadableStream({
@@ -108,6 +130,9 @@ export const POST = async (request: Request) => {
       controller.close();
     },
   });
+  if (!transformedStream) {
+    throw Error("transformedStream not Initialized");
+  }
   
   return LangChainAdapter.toDataStreamResponse(transformedStream);
 };
