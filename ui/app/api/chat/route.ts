@@ -10,7 +10,6 @@ import { BaseMessage } from "@langchain/core/messages";
 
 
 import { appInsights } from "../../AppInsights";
-import { isContext } from "vm";
 
 const model = new AzureChatOpenAI({
   azureOpenAIApiDeploymentName: "gpt-35-turbo-2",
