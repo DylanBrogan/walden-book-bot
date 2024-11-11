@@ -2,14 +2,13 @@ import {  LangChainAdapter, Message } from "ai";
 import { vectorStoreRetriever } from "../../vector_store_init";
 
 import { AzureChatOpenAI } from "@langchain/openai";
-import { RunnableSequence, RunnablePassthrough, RunnableBranch } from "@langchain/core/runnables";
+import { RunnableSequence, RunnablePassthrough, RunnableBranch, RunnableWithMessageHistory  } from "@langchain/core/runnables";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
+import { createHistoryAwareRetriever } from "langchain/chains/history_aware_retriever";
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
-import { BaseMessage } from "@langchain/core/messages";
+import { BaseMessage, HumanMessage } from "@langchain/core/messages";
 
-
-import { appInsights } from "../../AppInsights";
 
 const model = new AzureChatOpenAI({
   azureOpenAIApiDeploymentName: "gpt-35-turbo-2",
@@ -44,11 +43,6 @@ Your goal is to help users gain insights about the book, provide information abo
 <context>
 `;
  
-const prompt = ChatPromptTemplate.fromMessages([
-  ["system", SYSTEM_TEMPLATE],
-  new MessagesPlaceholder("messages"),
-]);
-
 // Prompt and chainlink to allow chat history
 const queryTransformPrompt = ChatPromptTemplate.fromMessages([
   new MessagesPlaceholder("messages"),
@@ -63,100 +57,86 @@ const parseRetrieverInput = (params: { messages: BaseMessage[] }) => {
   return params.messages[params.messages.length - 1].content;
 };
 
+// Dict to store chat history
+const conversationLog = { history: [] as { role: string; content: string }[] };
+
+// Prompt to reformulate chat history around user's query
+const contextualizeQSystemPrompt =
+  "Given a chat history and the latest user question " +
+  "which might reference context in the chat history, " +
+  "formulate a standalone question which can be understood " +
+  "without the chat history. Do NOT answer the question, " +
+  "just reformulate it if needed and otherwise return it as is.";
+
+const contextualizeQPrompt = ChatPromptTemplate.fromMessages([
+  ["system", contextualizeQSystemPrompt],
+  new MessagesPlaceholder("chat_history"),
+  ["human", "{input}"],
+]);
+
+// Prompt to provide chat history with user input and system context
+const qaPrompt = ChatPromptTemplate.fromMessages([
+  ["system", SYSTEM_TEMPLATE],
+  new MessagesPlaceholder("chat_history"),
+  ["human", "{input}"],
+]);
+
 export const POST = async (request: Request) => {
-
-
-  try {
-
-  
-  console.log("WITHIN POST METHOD")
-  if (appInsights) {
-    appInsights.trackTrace({ message: 'Within Post Method' });
-  }
 
   // Get user query as string
   const requestData = await request.json() as { messages: Message[] };
   const query = requestData.messages.pop();
 
-  if (!process.env.AZURE_DEPLOYMENT) {
-    throw Error("AZURE_DEPLOYMENT environment variable must be provided.");
-  }
-
   // Initialize retriever from vector_store_init.ts
   const retriever = await vectorStoreRetriever; 
 
-  if (appInsights && !retriever) {
-    appInsights.trackTrace({ message: 'Ret not Initialized' });
-    throw Error("Retriever not Initialized");
-  }
-
-  // Chain to use context with questions
-  const documentChain = await createStuffDocumentsChain({
+  // Transform into History Aware Retriever
+  const historyAwareRetriever = await createHistoryAwareRetriever({
     llm: model,
-    prompt: prompt,
+    retriever,
+    rephrasePrompt: contextualizeQPrompt,
   });
 
-  if (appInsights && !documentChain) {
-    appInsights.trackTrace({ message: 'DC not Initialized' });
-    throw Error("documentChain not Initialized");
-  }
+  // Chain to use context with questions
+  const questionAnswerChain = await createStuffDocumentsChain({
+    llm: model,
+    prompt: qaPrompt,
+  });
 
-  // Below is attempt to introduce chat messages into context to allow follow-up questions, currently non-functional
+  // Chain to use retriever
   const queryTransformingRetrieverChain = RunnableBranch.from([
     [
       (params: { messages: BaseMessage[] }) => params.messages.length === 1,
-      RunnableSequence.from([parseRetrieverInput, retriever]),
+      RunnableSequence.from([parseRetrieverInput, historyAwareRetriever]),
     ],
     queryTransformPrompt.pipe(model).pipe(new StringOutputParser()).pipe(retriever),
   ]).withConfig({ runName: "chat_retriever_chain" });
 
-  if (appInsights && !queryTransformingRetrieverChain) {
-    appInsights.trackTrace({ message: 'QTRC  not Initialized' });
-    throw Error("queryTransformingRetrieverChain not Initialized");
-  }
-
   const conversationalRetrievalChain = RunnablePassthrough.assign({
     context: queryTransformingRetrieverChain,
   }).assign({
-    answer: documentChain,
+    answer: questionAnswerChain,
   });
 
-  if (appInsights && !conversationalRetrievalChain) {
-    appInsights.trackTrace({ message: 'ConvRetChain  not Initialized' });
-    throw Error("conversationalRetrievalChain not Initialized");
-  }
-
   // Stream the response
-  const stream = await conversationalRetrievalChain.stream({"messages": query});
-
-  if (appInsights && !stream) {
-    appInsights.trackTrace({ message: 'Stream  not Initialized' });
-    throw Error("stream not Initialized");
-  }
+  const stream = await conversationalRetrievalChain.stream({"messages": query, "chat_history": JSON.stringify(conversationLog), "input": query?.content} );
+  conversationLog.history.push({role: 'user', content: query?.content[0].text})
 
   // Stream is in format {"answer": "chunk"}. This serves as a map to make stream streamable
+  let aiResponse = '';
   const transformedStream = new ReadableStream({
     async start(controller) {
       for await (const chunk of stream) {
         // Transform each chunk here if necessary
         const transformedChunk = chunk.answer || '';
+        aiResponse += transformedChunk;
         controller.enqueue(transformedChunk);
       }
+      // Add model's response to chat history
+      conversationLog.history.push({role: 'ai', content: aiResponse})
       controller.close();
     },
   });
-  if (appInsights && !transformedStream) {
-    appInsights.trackTrace({ message: 'TransformedStream not Initialized' });
-    throw Error("transformedStream not Initialized");
-  }
-  
+
   return LangChainAdapter.toDataStreamResponse(transformedStream);
   }
-  catch (ex)
-  {
-    appInsights.trackException({
-      exception: ex as Error, // The actual exception object
-      properties: { location: "handler loc" } // Optional custom properties
-    });
-  }
-};
