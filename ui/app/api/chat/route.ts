@@ -108,6 +108,11 @@ function transformMessage(query: Message | undefined): UserMessage | undefined {
 
 export const POST = async (request: Request) => {
 
+
+  if (!process.env.AZURE_DEPLOYMENT) {
+    throw Error("AZURE_DEPLOYMENT environment variable must be provided.");
+  }
+  
   // Get user query as string
   const requestData = await request.json() as { messages: Message[] };
   const query = requestData.messages.pop();
