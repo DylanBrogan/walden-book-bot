@@ -57,9 +57,6 @@ const parseRetrieverInput = (params: { messages: BaseMessage[] }) => {
   return params.messages[params.messages.length - 1].content;
 };
 
-// Dict to store chat history
-const conversationLog = { history: [] as { role: string; content: string }[] };
-
 // Prompt to reformulate chat history around user's query
 const contextualizeQSystemPrompt =
   "Given a chat history and the latest user question " +
@@ -80,6 +77,34 @@ const qaPrompt = ChatPromptTemplate.fromMessages([
   new MessagesPlaceholder("chat_history"),
   ["human", "{input}"],
 ]);
+
+// Define expected type structures
+type MessageContent = { type: string; text: string };
+type UserMessage = { role: string; content: MessageContent[] };
+type ConversationLogEntry = { role: 'user' | 'ai'; content: string };
+
+// Dict to store chat history
+const conversationLog = {
+  history: [] as ConversationLogEntry[]
+};
+
+// Function to log the user's message
+function logUserMessage(query: UserMessage | undefined) {
+  const userMessage = query?.content?.[0]?.text ?? ''; // Use empty string if `text` does not exist
+
+  // Add the user message to the conversation log if it exists
+  if (userMessage) {
+    conversationLog.history.push({ role: 'user', content: userMessage });
+  }
+}
+
+// Function to avoid type error when logging to chat history
+function transformMessage(query: Message | undefined): UserMessage | undefined {
+  if (!query) return undefined;
+
+  const transformedContent: MessageContent[] = [{ type: 'text', text: query.content }];
+  return { role: query.role, content: transformedContent };
+}
 
 export const POST = async (request: Request) => {
 
@@ -120,7 +145,9 @@ export const POST = async (request: Request) => {
 
   // Stream the response
   const stream = await conversationalRetrievalChain.stream({"messages": query, "chat_history": JSON.stringify(conversationLog), "input": query?.content} );
-  conversationLog.history.push({role: 'user', content: query?.content[0].text})
+
+  // Add user's message to chat history after using to generate response
+  logUserMessage(transformMessage(query));
 
   // Stream is in format {"answer": "chunk"}. This serves as a map to make stream streamable
   let aiResponse = '';
