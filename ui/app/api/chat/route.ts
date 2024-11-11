@@ -2,12 +2,12 @@ import {  LangChainAdapter, Message } from "ai";
 import { vectorStoreRetriever } from "../../vector_store_init";
 
 import { AzureChatOpenAI } from "@langchain/openai";
-import { RunnableSequence, RunnablePassthrough, RunnableBranch, RunnableWithMessageHistory  } from "@langchain/core/runnables";
+import { RunnableSequence, RunnablePassthrough, RunnableBranch } from "@langchain/core/runnables";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { createHistoryAwareRetriever } from "langchain/chains/history_aware_retriever";
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
-import { BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { BaseMessage } from "@langchain/core/messages";
 
 
 const model = new AzureChatOpenAI({
