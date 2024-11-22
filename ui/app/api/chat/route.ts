@@ -78,39 +78,62 @@ const qaPrompt = ChatPromptTemplate.fromMessages([
   ["human", "{input}"],
 ]);
 
-// Define expected type structures
-type MessageContent = { type: string; text: string };
-type UserMessage = { role: string; content: MessageContent[] };
-type ConversationLogEntry = { role: 'user' | 'ai'; content: string };
-
 // Dict to store chat history
+type ConversationLogEntry = { role: 'user' | 'ai'; content: string };
 const conversationLog = {
   history: [] as ConversationLogEntry[]
 };
 
-// Function to log the user's message
-function logUserMessage(query: UserMessage | undefined) {
-  const userMessage = query?.content?.[0]?.text ?? ''; // Use empty string if `text` does not exist
-
-  // Add the user message to the conversation log if it exists
-  if (userMessage) {
-    conversationLog.history.push({ role: 'user', content: userMessage });
-  }
-}
-
-// Function to avoid type error when logging to chat history
-function transformMessage(query: Message | undefined): UserMessage | undefined {
-  if (!query) return undefined;
-
-  const transformedContent: MessageContent[] = [{ type: 'text', text: query.content }];
-  return { role: query.role, content: transformedContent };
-}
+// BEGIN Image Generation Code
+const target = "https://dbrog-m3paj6v1-swedencentral.cognitiveservices.azure.com/openai/deployments/dall-e-3-2/images/generations?api-version=2024-02-01&api-key=3HhHlN8V4CfSYsBwYgknuvrWz2mM8ANT8S5yBB6vSEljqJtYXDylJQQJ99AKACfhMk5XJ3w3AAAAACOGbzTI";
+// END Image Generation Code
 
 export const POST = async (request: Request) => {
 
   // Get user query as string
-  const requestData = await request.json() as { messages: Message[] };
+  const requestData = await request.json() as {  tools: { name: string; type: string; value: string }[]; isImageRequest: true | false; messages: { role: "user" | "ai"; content: { type: string; text: string }[] }[] };
   const query = requestData.messages.pop();
+  console.log(requestData)
+
+  const isImageButtonUsed = false;
+  
+  let url = "";
+
+  // BEGIN Image Generation Code
+  if (isImageButtonUsed) {
+    const payload = {
+      prompt: JSON.stringify(query?.content[0].text),
+      size: "1024x1024",
+      n: 1,
+      quality: "hd",
+      style: "vivid"
+    };
+
+    const generateUrl = async () => {
+      try {
+        const response = await fetch(target, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.statusText}`);
+        }
+  
+        const data = await response.json();
+        console.log("Response:", data.data[0].url);
+        return data.data[0].url; // Return the generated URL
+      } 
+      catch (error) {
+        console.error("Error:", error);
+        return ""; // Return an empty string if there's an error
+      }
+    };
+
+    url = await generateUrl();
+  }
+  // END Image Generation Code
 
   // Initialize retriever from vector_store_init.ts
   const retriever = await vectorStoreRetriever; 
@@ -144,12 +167,19 @@ export const POST = async (request: Request) => {
   });
 
   // Stream the response
-  const stream = await conversationalRetrievalChain.stream({"messages": query, "chat_history": JSON.stringify(conversationLog), "input": query?.content} );
+  let input = "";
+  if (isImageButtonUsed) {
+    input = "Print the following url exactly:" + url;
+  }
+  else {
+    input = JSON.stringify(query?.content[0].text);
+  }
+
+  const stream = await conversationalRetrievalChain.stream({"messages": query, "chat_history": JSON.stringify(conversationLog), "input": input} );
 
   // Add user's message to chat history after using to generate response
-  logUserMessage(transformMessage(query));
+  conversationLog.history.push({ role: 'user', content: query?.content[0].text as string });
 
-  // Stream is in format {"answer": "chunk"}. This serves as a map to make stream streamable
   let aiResponse = '';
   const transformedStream = new ReadableStream({
     async start(controller) {
@@ -165,5 +195,23 @@ export const POST = async (request: Request) => {
     },
   });
 
-  return LangChainAdapter.toDataStreamResponse(transformedStream);
+  const responseData = {
+    aiResponse: aiResponse,
+    imageUrl: url,
+  };
+
+  // Either return image data, or text to stream
+  if (isImageButtonUsed) {
+    return new Response(JSON.stringify(responseData), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  else {
+    return LangChainAdapter.toDataStreamResponse(transformedStream);
+  }
+  // Stream is in format {"answer": "chunk"}. This serves as a map to make stream streamable
+
+
+
+
   }
