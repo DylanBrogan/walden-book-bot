@@ -5,15 +5,30 @@ import {
   ThreadWelcome,
   Composer,
   type ThreadConfig,
-  useEdgeRuntime
+  useEdgeRuntime,
+  AssistantRuntimeProvider,
+  useContentPartImage, 
+  UserMessage,
+  AssistantMessage,
+  ThreadPrimitive
 } from "@assistant-ui/react";
 import { makeMarkdownText } from "@assistant-ui/react-markdown";
+import { useState, useCallback, useEffect } from "react";
 
-// Step 1: Custom Composer with a Button
-const MyComposer: React.FC = () => {
-  const handleImageButtonClick = () => {
+
+// Custom Composer with image Button
+const MyComposer: React.FC<{ isImageRequest: boolean, setIsImageRequest: React.Dispatch<React.SetStateAction<boolean>> }> = ({ setIsImageRequest }) => {
+  
+  // Update IsImageRequest to True
+  const handleImageButtonClick = async () => {
     console.log("Image button clicked!");
-    // Add button logic here
+    // window.isImageRequest = true;
+    setIsImageRequest(true);
+    // const Image = () => {
+    //   const image = useContentPartImage();
+     
+    //   return <img src={image} alt="AI" />;
+    // };
   };
 
   return (
@@ -34,16 +49,25 @@ const MyComposer: React.FC = () => {
   );
 };
 
-const MyThread: React.FC<ThreadConfig> = (config) => {
+const MyThread: React.FC<ThreadConfig & { runtime: any, isImageRequest: boolean, setIsImageRequest: React.Dispatch<React.SetStateAction<boolean>> }> = ({
+  runtime,
+  isImageRequest,
+  setIsImageRequest,
+  ...config
+}) => {
+
   return (
     <Thread.Root config={config}>
       <Thread.Viewport>
         <ThreadWelcome />
+        {/* Last, was checking what changing this to primitive does. Also added the components, but seemed like those were default */}
+        {/* <ThreadPrimitive.Messages components={{UserMessage, AssistantMessage}}/> */}
         <Thread.Messages />
+        {/* <img src={"https://covers.openlibrary.org/b/id/240727-S.jpg"} /> */}
         <Thread.FollowupSuggestions />
         <Thread.ViewportFooter>
           <Thread.ScrollToBottom />
-          <MyComposer />
+          <MyComposer isImageRequest={isImageRequest} setIsImageRequest={setIsImageRequest} />
         </Thread.ViewportFooter>
       </Thread.Viewport>
     </Thread.Root>
@@ -53,12 +77,37 @@ const MyThread: React.FC<ThreadConfig> = (config) => {
 const MarkdownText = makeMarkdownText();
 
 export function MyAssistant() {
-  const runtime = useEdgeRuntime({ api: "/api/chat" });
+  const [isImageRequest, setIsImageRequest] = useState(false);
+
+
+  // useEffect to log the state when it changes
+  useEffect(() => {
+    console.log("Updated IMAGE REQUEST: ", isImageRequest);
+  }, [isImageRequest]);
+
+  console.log("BEFORE RUNTIME CONST " + isImageRequest)
+  const runtime = useEdgeRuntime({ 
+    api: "/api/chat", 
+    headers: {"Content-Type": "application/json"},
+    body: {
+      tools: [
+        {
+          name: "imageRequest",
+          type: "flag",
+          value: isImageRequest ? "true" : "false",
+        }
+      ],
+    },
+  });
 
   return (
-    <MyThread
-      runtime={runtime}
-      assistantMessage={{ components: { Text: MarkdownText } }}
-    />
+    <AssistantRuntimeProvider runtime={runtime}>
+      <MyThread
+        runtime={runtime}
+        assistantMessage={{ components: { Text: MarkdownText } }}
+        isImageRequest={isImageRequest}
+        setIsImageRequest={setIsImageRequest}
+      />
+    </AssistantRuntimeProvider>
   );
 }

@@ -83,21 +83,77 @@ const qaPrompt = ChatPromptTemplate.fromMessages([
   ["human", "{input}"],
 ]);
 
+<<<<<<< HEAD
 // Define expected type structure
 type ConversationLogEntry = { role: 'user' | 'ai'; content: string };
 type ToolLogEntry = {tool_entry: string};
+=======
+>>>>>>> bd94bba ([WIP] working on flag to my assistant, as well as image display)
 // Dict to store chat history
+type ConversationLogEntry = { role: 'user' | 'ai'; content: string };
 const conversationLog = {
   history: [] as ConversationLogEntry[]
 };
+<<<<<<< HEAD
 const toolLog = {
   history: [] as ToolLogEntry[]
 };
+=======
+
+// BEGIN Image Generation Code
+const target = "https://dbrog-m3paj6v1-swedencentral.cognitiveservices.azure.com/openai/deployments/dall-e-3-2/images/generations?api-version=2024-02-01&api-key=3HhHlN8V4CfSYsBwYgknuvrWz2mM8ANT8S5yBB6vSEljqJtYXDylJQQJ99AKACfhMk5XJ3w3AAAAACOGbzTI";
+// END Image Generation Code
+>>>>>>> bd94bba ([WIP] working on flag to my assistant, as well as image display)
 
 export const POST = async (request: Request) => {
   // Get user query as string
+<<<<<<< HEAD
   const requestData = await request.json() as { messages: { role: "user" | "ai"; content: { type: string; text: string }[] }[] };
+=======
+  const requestData = await request.json() as {  tools: { name: string; type: string; value: string }[]; isImageRequest: true | false; messages: { role: "user" | "ai"; content: { type: string; text: string }[] }[] };
+>>>>>>> bd94bba ([WIP] working on flag to my assistant, as well as image display)
   const query = requestData.messages.pop();
+  console.log(requestData)
+
+  const isImageButtonUsed = false;
+  
+  let url = "";
+
+  // BEGIN Image Generation Code
+  if (isImageButtonUsed) {
+    const payload = {
+      prompt: JSON.stringify(query?.content[0].text),
+      size: "1024x1024",
+      n: 1,
+      quality: "hd",
+      style: "vivid"
+    };
+
+    const generateUrl = async () => {
+      try {
+        const response = await fetch(target, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.statusText}`);
+        }
+  
+        const data = await response.json();
+        console.log("Response:", data.data[0].url);
+        return data.data[0].url; // Return the generated URL
+      } 
+      catch (error) {
+        console.error("Error:", error);
+        return ""; // Return an empty string if there's an error
+      }
+    };
+
+    url = await generateUrl();
+  }
+  // END Image Generation Code
 
   // Provide user input to tool chain, to see if query requires additional knowledge and to perform API call
   const tool_response = await toolChainInput(query?.content[0].text as string)
@@ -134,13 +190,27 @@ export const POST = async (request: Request) => {
   });
 
   // Stream the response
+<<<<<<< HEAD
   const stream = await conversationalRetrievalChain.stream({"messages": query, "chat_history": JSON.stringify(conversationLog), "tool_response": JSON.stringify(tool_response), "tool_response_history": JSON.stringify(toolLog), "input": query?.content} );
 
   // Add user's message to chat and tool history after using to generate response
   conversationLog.history.push({ role: 'user', content: query?.content[0].text as string });
   toolLog.history.push({tool_entry: JSON.stringify(tool_response)});
+=======
+  let input = "";
+  if (isImageButtonUsed) {
+    input = "Print the following url exactly:" + url;
+  }
+  else {
+    input = JSON.stringify(query?.content[0].text);
+  }
 
-  // Stream is in format {"answer": "chunk"}. This serves as a map to make stream streamable
+  const stream = await conversationalRetrievalChain.stream({"messages": query, "chat_history": JSON.stringify(conversationLog), "input": input} );
+
+  // Add user's message to chat history after using to generate response
+  conversationLog.history.push({ role: 'user', content: query?.content[0].text as string });
+>>>>>>> bd94bba ([WIP] working on flag to my assistant, as well as image display)
+
   let aiResponse = '';
   const transformedStream = new ReadableStream({
     async start(controller) {
@@ -156,5 +226,23 @@ export const POST = async (request: Request) => {
     },
   });
 
-  return LangChainAdapter.toDataStreamResponse(transformedStream);
+  const responseData = {
+    aiResponse: aiResponse,
+    imageUrl: url,
+  };
+
+  // Either return image data, or text to stream
+  if (isImageButtonUsed) {
+    return new Response(JSON.stringify(responseData), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  else {
+    return LangChainAdapter.toDataStreamResponse(transformedStream);
+  }
+  // Stream is in format {"answer": "chunk"}. This serves as a map to make stream streamable
+
+
+
+
   }
