@@ -1,4 +1,4 @@
-import {  LangChainAdapter, Message } from "ai";
+import {  LangChainAdapter } from "ai";
 import { vectorStoreRetriever } from "../../vector_store_init";
 
 import { AzureChatOpenAI } from "@langchain/openai";
@@ -8,7 +8,7 @@ import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { createHistoryAwareRetriever } from "langchain/chains/history_aware_retriever";
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 import { BaseMessage } from "@langchain/core/messages";
-
+import { toolChainInput } from "../tools/ToolChain";
 
 const model = new AzureChatOpenAI({
   azureOpenAIApiDeploymentName: "gpt-35-turbo-2",
@@ -21,28 +21,31 @@ export const maxDuration = 30;
 
 // Create a system & human prompt for the chat model
 const SYSTEM_TEMPLATE = `
-You are a chatbot created as part of a Generative AI project by Dylan Brogan for the University of Toledo's Generative AI class midterm. Your purpose is to answer questions specifically about the book titled 'Walden; or, Life in the Woods', published in 1854 by Henry David Thoreau, as well as to assist with questions related to this project or the course itself.
+You are a chatbot created as part of a Generative AI project by Dylan Brogan for the University of Toledo's Generative AI class midterm. Your purpose is to answer questions specifically about the book titled 'Walden; or, Life in the Woods', published in 1854 by Henry David Thoreau, as well as to assist with questions related to this project or the course itself. In addtion, you can answer questions about other books or authors only when that information is provided via the tool information given to you.
 
 **Instructions for Responses:**
 
-1. **Stay Within Scope:** Answer questions strictly related to:
+1. **Stay Within Scope:** Only answer questions when strictly related to the following topics:
    - The book's content, themes, and insights.
    - Topics relevant to the Generative AI class.
+   - Information over other books or authors that is retrieved via the tool model's information.
    - Dylan Brogan's project purpose, scope, and any related technical questions regarding its execution.
 
-2. **Avoid Speculation:** Do not answer questions that require speculation beyond the book's content, project details, or the scope of the class. If a user asks something outside these topics, politely steer the conversation back to relevant subjects.
+2. **Usage of Tools** For every question, a model with access to tools will provide you information. It's primary function is to return information about books or authors from Open Library. If it decides a tool is not required, this will be indicated. If a tool is used, the tool name, input, and information returned will all be provided to you to use to inform your response to the user. In addition to the latest request, you will also be provided the history of tool responses, so users can ask follow up questions regarding any book or author's information.
 
-3. **Stay Informative and Accurate:** Ensure answers about the book are concise yet informative, reflecting an understanding of the book's themes and context. For questions about the course or project, give clear, relevant information in the context of this Generative AI project.
+3. **Avoid Speculation:** Do not answer questions that require speculation beyond the book's content, project details, or the scope of the class. If a user asks something outside these topics, politely steer the conversation back to relevant subjects.
 
-4. **Promptly Address Out-of-Scope Requests:** If the user asks about topics unrelated to the book, project, or course, respond with a message like: "I'm here to help with questions about the book Walden, Dylan Brogan's project, or the Generative AI class. Could you clarify your question within these topics?"
+4. **Stay Informative and Accurate:** Ensure answers about the book are concise yet informative, reflecting an understanding of the book's themes and context. For questions about the course or project, give clear, relevant information in the context of this Generative AI project.
 
-Your goal is to help users gain insights about the book, provide information about the project, and support learning objectives for the Generative AI class at the University of Toledo. Now here is the book.
+5. **Promptly Address Out-of-Scope Requests:** If the user asks about topics unrelated to any books or authors, project, course, respond with a message like: "I'm here to help with questions about the book Walden, Dylan Brogan's project, the Generative AI class, or generic information about other books and authors. Could you clarify your question within these topics?"
+
+Your goal is to help users gain insights about the book, learn about other books and authors, provide information about the project, and support learning objectives for the Generative AI class at the University of Toledo.
 -------------------
 <context>
 {context}
 <context>
 `;
- 
+
 // Prompt and chainlink to allow chat history
 const queryTransformPrompt = ChatPromptTemplate.fromMessages([
   new MessagesPlaceholder("messages"),
@@ -71,46 +74,33 @@ const contextualizeQPrompt = ChatPromptTemplate.fromMessages([
   ["human", "{input}"],
 ]);
 
-// Prompt to provide chat history with user input and system context
+// Prompt to provide chat history, tool informatino, user input, and system context
 const qaPrompt = ChatPromptTemplate.fromMessages([
   ["system", SYSTEM_TEMPLATE],
   new MessagesPlaceholder("chat_history"),
+  new MessagesPlaceholder("tool_response"),
+  new MessagesPlaceholder("tool_response_history"),
   ["human", "{input}"],
 ]);
 
-// Define expected type structures
-type MessageContent = { type: string; text: string };
-type UserMessage = { role: string; content: MessageContent[] };
+// Define expected type structure
 type ConversationLogEntry = { role: 'user' | 'ai'; content: string };
-
+type ToolLogEntry = {tool_entry: string};
 // Dict to store chat history
 const conversationLog = {
   history: [] as ConversationLogEntry[]
 };
-
-// Function to log the user's message
-function logUserMessage(query: UserMessage | undefined) {
-  const userMessage = query?.content?.[0]?.text ?? ''; // Use empty string if `text` does not exist
-
-  // Add the user message to the conversation log if it exists
-  if (userMessage) {
-    conversationLog.history.push({ role: 'user', content: userMessage });
-  }
-}
-
-// Function to avoid type error when logging to chat history
-function transformMessage(query: Message | undefined): UserMessage | undefined {
-  if (!query) return undefined;
-
-  const transformedContent: MessageContent[] = [{ type: 'text', text: query.content }];
-  return { role: query.role, content: transformedContent };
-}
+const toolLog = {
+  history: [] as ToolLogEntry[]
+};
 
 export const POST = async (request: Request) => {
-
   // Get user query as string
-  const requestData = await request.json() as { messages: Message[] };
+  const requestData = await request.json() as { messages: { role: "user" | "ai"; content: { type: string; text: string }[] }[] };
   const query = requestData.messages.pop();
+
+  // Provide user input to tool chain, to see if query requires additional knowledge and to perform API call
+  const tool_response = await toolChainInput(query?.content[0].text as string)
 
   // Initialize retriever from vector_store_init.ts
   const retriever = await vectorStoreRetriever; 
@@ -144,10 +134,11 @@ export const POST = async (request: Request) => {
   });
 
   // Stream the response
-  const stream = await conversationalRetrievalChain.stream({"messages": query, "chat_history": JSON.stringify(conversationLog), "input": query?.content} );
+  const stream = await conversationalRetrievalChain.stream({"messages": query, "chat_history": JSON.stringify(conversationLog), "tool_response": JSON.stringify(tool_response), "tool_response_history": JSON.stringify(toolLog), "input": query?.content} );
 
-  // Add user's message to chat history after using to generate response
-  logUserMessage(transformMessage(query));
+  // Add user's message to chat and tool history after using to generate response
+  conversationLog.history.push({ role: 'user', content: query?.content[0].text as string });
+  toolLog.history.push({tool_entry: JSON.stringify(tool_response)});
 
   // Stream is in format {"answer": "chunk"}. This serves as a map to make stream streamable
   let aiResponse = '';
