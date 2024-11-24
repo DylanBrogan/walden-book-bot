@@ -42,9 +42,49 @@ const authorSearchTool = tool(
       }),
   }
   )
+  const imageGenerationTool = tool(
+    async (input) => {
+        const target = "https://dbrog-m3paj6v1-swedencentral.cognitiveservices.azure.com/openai/deployments/dall-e-3-2/images/generations?api-version=2024-02-01&api-key=3HhHlN8V4CfSYsBwYgknuvrWz2mM8ANT8S5yBB6vSEljqJtYXDylJQQJ99AKACfhMk5XJ3w3AAAAACOGbzTI";
+
+        const payload = {
+          prompt: JSON.stringify(input.prompt),
+          size: "1024x1024",
+          n: 1,
+          quality: "hd",
+          style: "vivid"
+        };
+        try {
+          const response = await fetch(target, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload)
+          })
+  
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.statusText}`);
+          }
+    
+          const data = await response.json();
+          console.log("Response:", data.data[0].url);
+          return data.data[0].url; // Return the generated URL
+        } 
+        catch (error) {
+          console.error("Error:", error);
+          return "Error in generating URL"; // Return an empty string if there's an error
+        }
+    },
+    {
+        name: "imageGeneration",
+        description: "Returns a URL to an AI generated image.",
+        schema: z.object({
+        prompt: z.string().describe("The user's prompt for the image to generate."),
+        }),
+    }
+    )
+  
 
 // List of available tools to provide toolChain
-const tools = [bookSearchTool, authorSearchTool];
+const tools = [bookSearchTool, authorSearchTool, imageGenerationTool];
 
 const toolChain = (modelOutput: { name: string | number; arguments: Record<string, any> }) => {
     // If no tool is chosen, indicate that in retured JSON output with tool name of none
@@ -78,10 +118,11 @@ const systemPrompt = `You are an assistant that has access to the following set 
 
 {{rendered_tools}}
 
-When analyzing user input, identify if the user asks about a specific book or a set of books, or if the user assks about a specific author.
+When analyzing user input, identify if the user asks about a specific book or a set of books, if the user assks about a specific author, or if the user wants to generate an image from the prompt.
 
 If a specific book is mentioned, extract only the book's title. 
-If a specific author is mentioned, extract only the author's name
+If a specific author is mentioned, extract only the author's name.
+If an image should be generated, extract the full user input in JSON format.
 Always use the JSON format below, and never add extra text. Here is the required response format:
 
 {{
@@ -97,9 +138,15 @@ or
     "name": "<AUTHOR_NAME>"
 }}
 }}
+or
+{{
+"name": "imageGeneration",
+"arguments": {{
+    "name": "<USER_PROMPT>"
+}}
+}}
 
 If no tool should be used, always respond with:
-
 {{
 "name": "none",
 "arguments": {{}}
@@ -127,7 +174,15 @@ Author Name: Ayn Rand
 }}
 }}
 
-If no book or author is mentioned, respond with:
+Generate an image of a statue of a man holding up the world.
+{{
+"name": "imageGeneration",
+"arguments": {{
+    "prompt": "Generate an image of a statue of a man holding up the world."
+}}
+}}
+
+If no book or author is mentioned, or indication that an image should be generated, respond with:
 
 {{
 "name": "none",
