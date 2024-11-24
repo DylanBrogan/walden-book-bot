@@ -99,8 +99,8 @@ export const POST = async (request: Request) => {
   const requestData = await request.json() as { messages: { role: "user" | "ai"; content: { type: string; text: string }[] }[] };
   const query = requestData.messages.pop();
 
+  // Provide user input to tool chain, to see if query requires additional knowledge and to perform API call
   const tool_response = await toolChainInput(query?.content[0].text as string)
-  console.log("FINAL RES: " + JSON.stringify(tool_response))
 
   // Initialize retriever from vector_store_init.ts
   const retriever = await vectorStoreRetriever; 

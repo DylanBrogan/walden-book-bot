@@ -30,14 +30,26 @@ async (input) => {
     }),
 }
 )
+const authorSearchTool = tool(
+  async (input) => {
+      return await OpenLibraryAPI.authorSearchByName(input.name);
+  },
+  {
+      name: "authorSearch",
+      description: "Returns information about a single author from Open Library API.",
+      schema: z.object({
+      name: z.string().describe("The name of the author to search for. Input is solely a string containing the name of the author."),
+      }),
+  }
+  )
 
 // List of available tools to provide toolChain
-const tools = [bookSearchTool];
+const tools = [bookSearchTool, authorSearchTool];
 
 const toolChain = (modelOutput: { name: string | number; arguments: Record<string, any> }) => {
-
     // If no tool is chosen, indicate that in retured JSON output with tool name of none
     if (modelOutput.name === "none") {
+        console.log("No tool used.")
         return new RunnableLambda({
         func: () => ("Model output was not valid JSON. No tool was invoked.")
         });
@@ -47,7 +59,7 @@ const toolChain = (modelOutput: { name: string | number; arguments: Record<strin
         tools.map((tool) => [tool.name, tool])
     );
     const chosenTool = toolMap[modelOutput.name];
-
+    console.log("Using tool: " + modelOutput.name)
     return new RunnablePick("arguments").pipe(
         new RunnableLambda({
         func: (input: string) =>
@@ -66,15 +78,23 @@ const systemPrompt = `You are an assistant that has access to the following set 
 
 {{rendered_tools}}
 
-When analyzing user input, identify if the user asks about a specific book or a set of books.
+When analyzing user input, identify if the user asks about a specific book or a set of books, or if the user assks about a specific author.
 
 If a specific book is mentioned, extract only the book's title. 
+If a specific author is mentioned, extract only the author's name
 Always use the JSON format below, and never add extra text. Here is the required response format:
 
 {{
 "name": "bookSearch",
 "arguments": {{
     "title": "<BOOK_TITLE>"
+}}
+}}
+or
+{{
+"name": "authorSearch",
+"arguments": {{
+    "name": "<AUTHOR_NAME>"
 }}
 }}
 
@@ -91,6 +111,7 @@ If no tool should be used, always respond with:
 - If the user input is ambiguous, assume that "<BOOK_TITLE>" is the name of the book that was provided.
 
 Example output:
+Title: Atlas Shrugged
 {{
 "name": "bookSearch",
 "arguments": {{
@@ -98,16 +119,21 @@ Example output:
 }}
 }}
 
-If no book is mentioned, respond with:
+Author Name: Ayn Rand
+{{
+"name": "authorSearch",
+"arguments": {{
+    "name": "Ayn Rand"
+}}
+}}
+
+If no book or author is mentioned, respond with:
 
 {{
 "name": "none",
 "arguments": {{}}
 }}
 `;
-
-
-
 
 const tool_prompt = ChatPromptTemplate.fromMessages([
 ["system", systemPrompt],
@@ -134,7 +160,6 @@ const tool_chain = tool_prompt
     let parsedOutput;
     try {
       parsedOutput = JSON.parse(modelContent);
-      console.log("Parsed model output:", parsedOutput);
     } catch (error) {
       // console.error("Failed to parse model output as JSON:", error);
       // If invalid JSON error is caught, no tool is required and response below is sent.
@@ -146,7 +171,7 @@ const tool_chain = tool_prompt
       };
     }
 
-    // Step 2: Return parsed output, explicitly add output property
+    // Return parsed output, explicitly add output property
     return {
       ...parsedOutput,
       output: parsedOutput // Adding 'output' explicitly
@@ -160,7 +185,7 @@ export async function toolChainInput(input: string): Promise<any> {
       input,
       rendered_tools: renderedTools,
     };
-  
+
     // Invoke the tool chain with the provided input
     const response = await tool_chain.invoke(formattedInput);
     return response;
