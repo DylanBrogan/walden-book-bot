@@ -103,6 +103,47 @@ export const POST = async (request: Request) => {
   // Get user query as string
   const requestData = await request.json() as { messages: { role: "user" | "ai"; content: { type: string; text: string }[] }[] };
   const query = requestData.messages.pop();
+  console.log(requestData)
+
+  const isImageButtonUsed = false;
+  
+  let url = "";
+
+  // BEGIN Image Generation Code
+  if (isImageButtonUsed) {
+    const payload = {
+      prompt: JSON.stringify(query?.content[0].text),
+      size: "1024x1024",
+      n: 1,
+      quality: "hd",
+      style: "vivid"
+    };
+
+    const generateUrl = async () => {
+      try {
+        const response = await fetch(target, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.statusText}`);
+        }
+  
+        const data = await response.json();
+        console.log("Response:", data.data[0].url);
+        return data.data[0].url; // Return the generated URL
+      } 
+      catch (error) {
+        console.error("Error:", error);
+        return ""; // Return an empty string if there's an error
+      }
+    };
+
+    url = await generateUrl();
+  }
+  // END Image Generation Code
 
   // Provide user input to tool chain, to see if query requires additional knowledge and to perform API call
   const tool_response = await toolChainInput(query?.content[0].text as string)

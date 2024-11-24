@@ -3,6 +3,7 @@
 import { useEdgeRuntime } from "@assistant-ui/react";
 import { Thread } from "@assistant-ui/react";
 import { makeMarkdownText } from "@assistant-ui/react-markdown";
+import { useState, useCallback, useEffect } from "react";
 
 const MarkdownText = makeMarkdownText();
 
