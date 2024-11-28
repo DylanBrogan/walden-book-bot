@@ -91,6 +91,11 @@ export class OpenLibraryAPI {
       }
     }
 
+    /**
+     * Search for authors by name.
+     * @param name - The title of the book to search for.
+     * @returns An array of author metadata.
+     */
     static async authorSearchByName(name: string): Promise<AuthorSearchResult[]> {
       console.log("Retrieving author information.")
       try {
