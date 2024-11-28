@@ -107,7 +107,7 @@ const toolLog = {
 export const POST = async (request: Request) => {
   // Get user query as string
   const requestData = await request.json() as { messages: { role: "user" | "ai"; content: { type: string; text: string }[] }[] };
-  let query = requestData.messages.pop();
+  const query = requestData.messages.pop();
 
   // Stream user input to model to see if an image should be generated
   const result = await streamText({

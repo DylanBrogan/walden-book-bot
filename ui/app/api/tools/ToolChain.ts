@@ -100,7 +100,8 @@ export const imageGenerationTool = ai_tool({
 // List of available tools to provide toolChain
 const tools = [bookSearchTool, authorSearchTool];
 
-const toolChain = (modelOutput: { name: string | number; arguments: Record<string, any> }) => {
+const toolChain = (modelOutput: { name: string; arguments: { name: string } | { title: string } }) => {
+    console.log(modelOutput.arguments)
     // If no tool is chosen, indicate that in retured JSON output with tool name of none
     if (modelOutput.name === "none") {
         console.log("No tool used.")
@@ -194,12 +195,17 @@ const tool_prompt = ChatPromptTemplate.fromMessages([
 ["user", "{input}"],
 ]);
 
+type ModelOutput = {
+  name: string;
+  arguments: { name: string } | { title: string };
+  output: string;
+};
 const tool_chain = tool_prompt
 .pipe(tool_model)
-.pipe(new RunnableLambda<AIMessageChunk, Record<string, any>>({
+.pipe(new RunnableLambda<AIMessageChunk, ModelOutput>({
   func: async (modelOutput: AIMessageChunk) => {
     // Extract the content from AIMessageChunk
-    let modelContent = modelOutput.content;
+    const modelContent = modelOutput.content;
     // Check that stringified JSON is received
     if (typeof modelContent !== 'string') {
       console.error("Expected content to be a string but got:", typeof modelContent);
@@ -232,7 +238,13 @@ const tool_chain = tool_prompt
 }))
 .pipe(RunnablePassthrough.assign({ output: toolChainRunnable }));
 
-export async function toolChainInput(input: string): Promise<any> {
+type ToolChainResponse = {
+  name: string;
+  arguments: { name: string } | { title: string };
+  output: string;
+};
+
+export async function toolChainInput(input: string): Promise<ToolChainResponse> {
     const formattedInput = {
       input,
       rendered_tools: renderedTools,
