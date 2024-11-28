@@ -1,7 +1,5 @@
 // File of wrapper functions for Open Library's API
 import axios from "axios";
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
 
 const TITLE_URL = "https://openlibrary.org/search.json";
 const AUTHOR_URL = "https://openlibrary.org/search/authors.json";
