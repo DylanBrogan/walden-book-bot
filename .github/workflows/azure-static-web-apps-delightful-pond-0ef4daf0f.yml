@@ -36,6 +36,8 @@ jobs:
           NPM_CONFIG_LEGACY_PEER_DEPS: true
           AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
           AZURE_OPENAI_API_INSTANCE_NAME: ${{secrets.AZURE_OPENAI_API_INSTANCE_NAME}}
+          AZURE_OPENAI_API_DEPLOYMENT_NAME:  ${{secrets.AZURE_OPENAI_API_DEPLOYMENT_NAME}}
+
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
