@@ -12,7 +12,7 @@ export function MyAssistant() {
   
   return (
     <Thread
-      runtime={runtime}
+      // runtime={runtime}
       assistantMessage={{ components: { Text: MarkdownText } }}
     />
   );

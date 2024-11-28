@@ -2,6 +2,7 @@
 import { AzureChatOpenAI } from "@langchain/openai";
 import { OpenLibraryAPI } from "../tools/OpenLibrary";
 import { tool, StructuredToolInterface } from "@langchain/core/tools";
+import {tool as ai_tool} from "ai";
 import { z } from "zod";
 import { renderTextDescription } from "langchain/tools/render";
 import { RunnablePassthrough, RunnablePick, RunnableLambda } from "@langchain/core/runnables";
@@ -9,13 +10,13 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { AIMessageChunk } from "@langchain/core/messages";
 
 const tool_model = new AzureChatOpenAI({
-    azureOpenAIApiDeploymentName: "gpt-35-turbo-2",
-    azureOpenAIApiKey: "6fcf24c200bb4ca1bedd7fb7c32a7f47",
-    azureOpenAIApiInstanceName: "dbrog-m2agopml-eastus",
-    azureOpenAIEndpoint: "https://dbrog-m2agopml-eastus.openai.azure.com/",
-    azureOpenAIApiVersion: "2024-08-01-preview",
-    temperature: 0
-  });
+  azureOpenAIApiDeploymentName: process.env['AZURE_OPENAI_API_DEPLOYMENT_NAME'],
+  azureOpenAIApiKey: process.env['AZURE_OPENAI_API_KEY'],
+  azureOpenAIApiInstanceName: process.env['AZURE_OPENAI_API_INSTANCE_NAME'],
+  azureOpenAIEndpoint: process.env['AZURE_OPENAI_ENDPOINT'],
+  azureOpenAIApiVersion: process.env['AZURE_OPENAI_API_VERSION'],
+  temperature: 0
+});
 
 // List of tools that call Open Library wrapper functions and provide schema for when to use
 const bookSearchTool = tool(
@@ -30,6 +31,7 @@ async (input) => {
     }),
 }
 )
+
 const authorSearchTool = tool(
   async (input) => {
       return await OpenLibraryAPI.authorSearchByName(input.name);
@@ -41,50 +43,62 @@ const authorSearchTool = tool(
       name: z.string().describe("The name of the author to search for. Input is solely a string containing the name of the author."),
       }),
   }
-  )
-  const imageGenerationTool = tool(
-    async (input) => {
-        const target = "https://dbrog-m3paj6v1-swedencentral.cognitiveservices.azure.com/openai/deployments/dall-e-3-2/images/generations?api-version=2024-02-01&api-key=3HhHlN8V4CfSYsBwYgknuvrWz2mM8ANT8S5yBB6vSEljqJtYXDylJQQJ99AKACfhMk5XJ3w3AAAAACOGbzTI";
+)
 
-        const payload = {
-          prompt: JSON.stringify(input.prompt),
-          size: "1024x1024",
-          n: 1,
-          quality: "hd",
-          style: "vivid"
-        };
-        try {
-          const response = await fetch(target, {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify(payload)
-          })
+export const imageGenerationTool = ai_tool({
+  description: 'Render an image if the user requests.',
+  parameters: z.object({
+  prompt: z.string().describe("The user's prompt for the image to generate."),
+  }),
+  execute: async function (input: { prompt: string; }) {
+
+  const instance_name = process.env['AZURE_DALLE_INSTANCE_NAME'];
+  const api_version = process.env['AZURE_DALLE_API_VERSION'];
+  const api_key = process.env['AZURE_DALLE_API_KEY'];
   
-          if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.statusText}`);
-          }
+  const target = `https://${instance_name}.cognitiveservices.azure.com/openai/deployments/dall-e-3-2/images/generations?api-version=${api_version}&api-key=${api_key}`;
     
-          const data = await response.json();
-          console.log("Response:", data.data[0].url);
-          return data.data[0].url; // Return the generated URL
-        } 
-        catch (error) {
-          console.error("Error:", error);
-          return "Error in generating URL"; // Return an empty string if there's an error
-        }
-    },
-    {
-        name: "imageGeneration",
-        description: "Returns a URL to an AI generated image.",
-        schema: z.object({
-        prompt: z.string().describe("The user's prompt for the image to generate."),
-        }),
+  const payload = {
+    prompt: JSON.stringify(input.prompt),
+    size: "1024x1024",
+    n: 1,
+    quality: "hd",
+    style: "vivid"
+  };
+  try {
+    const response = await fetch(target, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.statusText}`);
     }
-    )
-  
+
+    const data = await response.json();
+    console.log("Response:", data.data[0].url);
+    return {
+      type: "image_url",
+      image_url: {
+        url: data.data[0].url,
+      }
+    };
+  }
+  catch (error) {
+    console.error("Error:", error);
+    return {
+      type: "image_url",
+      image_url: {
+        url: "", // Provide a fallback empty URL
+      },
+    };
+  }
+  }
+});
 
 // List of available tools to provide toolChain
-const tools = [bookSearchTool, authorSearchTool, imageGenerationTool];
+const tools = [bookSearchTool, authorSearchTool];
 
 const toolChain = (modelOutput: { name: string | number; arguments: Record<string, any> }) => {
     // If no tool is chosen, indicate that in retured JSON output with tool name of none
@@ -138,13 +152,6 @@ or
     "name": "<AUTHOR_NAME>"
 }}
 }}
-or
-{{
-"name": "imageGeneration",
-"arguments": {{
-    "name": "<USER_PROMPT>"
-}}
-}}
 
 If no tool should be used, always respond with:
 {{
@@ -171,14 +178,6 @@ Author Name: Ayn Rand
 "name": "authorSearch",
 "arguments": {{
     "name": "Ayn Rand"
-}}
-}}
-
-Generate an image of a statue of a man holding up the world.
-{{
-"name": "imageGeneration",
-"arguments": {{
-    "prompt": "Generate an image of a statue of a man holding up the world."
 }}
 }}
 
@@ -216,9 +215,7 @@ const tool_chain = tool_prompt
     try {
       parsedOutput = JSON.parse(modelContent);
     } catch (error) {
-      // console.error("Failed to parse model output as JSON:", error);
       // If invalid JSON error is caught, no tool is required and response below is sent.
-      // Return a fallback response in case of invalid JSON
       return {
         name: "none",
         arguments: {},

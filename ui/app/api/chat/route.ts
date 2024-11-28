@@ -1,4 +1,4 @@
-import {  LangChainAdapter } from "ai";
+import {  LangChainAdapter, streamText } from "ai";
 import { vectorStoreRetriever } from "../../vector_store_init";
 
 import { AzureChatOpenAI } from "@langchain/openai";
@@ -8,14 +8,15 @@ import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { createHistoryAwareRetriever } from "langchain/chains/history_aware_retriever";
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 import { BaseMessage } from "@langchain/core/messages";
-import { toolChainInput } from "../tools/ToolChain";
+import { toolChainInput, imageGenerationTool } from "../tools/ToolChain";
+import { azure } from '@ai-sdk/azure';
 
 const model = new AzureChatOpenAI({
-  azureOpenAIApiDeploymentName: "gpt-35-turbo-2",
-  azureOpenAIApiKey: "6fcf24c200bb4ca1bedd7fb7c32a7f47",
-  azureOpenAIApiInstanceName: "dbrog-m2agopml-eastus",
-  azureOpenAIEndpoint: "https://dbrog-m2agopml-eastus.openai.azure.com/",
-  azureOpenAIApiVersion: "2024-08-01-preview"
+  azureOpenAIApiDeploymentName: process.env['AZURE_OPENAI_API_DEPLOYMENT_NAME'],
+  azureOpenAIApiKey: process.env['AZURE_OPENAI_API_KEY'],
+  azureOpenAIApiInstanceName: process.env['AZURE_OPENAI_API_INSTANCE_NAME'],
+  azureOpenAIEndpoint: process.env['AZURE_OPENAI_ENDPOINT'],
+  azureOpenAIApiVersion: process.env['AZURE_OPENAI_API_VERSION'],
 });
 export const maxDuration = 30;
 
@@ -29,6 +30,7 @@ You are a chatbot created as part of a Generative AI project by Dylan Brogan for
    - The book's content, themes, and insights.
    - Topics relevant to the Generative AI class.
    - Information over other books or authors that is retrieved via the tool model's information.
+    - If you do not end up using a tool, do not answer the user's questions that do not relate to the other topics outlined.
    - Dylan Brogan's project purpose, scope, and any related technical questions regarding its execution.
    - A prompt with the intent to generate an image.
 
@@ -102,10 +104,27 @@ const toolLog = {
 export const POST = async (request: Request) => {
   // Get user query as string
   const requestData = await request.json() as { messages: { role: "user" | "ai"; content: { type: string; text: string }[] }[] };
-  const query = requestData.messages.pop();
+  let query = requestData.messages.pop();
 
+  // Stream user input to model to see if an image should be generated
+  const result = await streamText({
+    model: azure('gpt-4'),
+    system: "Your purpose is to display images through the imageTool when the user asks for one.",
+    prompt: JSON.stringify(query?.content),
+    maxSteps: 5,
+    tools: {imageGenerationTool},
+  })
+
+  // Check result from previous model, stream if image was generated
+  for await (const part of result.fullStream) {
+    if (part.type === 'tool-call' && part.toolName === 'imageGenerationTool') {
+      return result.toDataStreamResponse();
+    }
+  }
+
+  // Otherwise, continue with standard text response logic
   // Provide user input to tool chain, to see if query requires additional knowledge and to perform API call
-  const tool_response = await toolChainInput(query?.content[0].text as string)
+  const tool_response = await toolChainInput(JSON.stringify(query?.content))
 
   // Initialize retriever from vector_store_init.ts
   const retriever = await vectorStoreRetriever; 
@@ -138,8 +157,15 @@ export const POST = async (request: Request) => {
     answer: questionAnswerChain,
   });
 
+
   // Stream the response
-  const stream = await conversationalRetrievalChain.stream({"messages": query, "chat_history": JSON.stringify(conversationLog), "tool_response": JSON.stringify(tool_response), "tool_response_history": JSON.stringify(toolLog), "input": query?.content[0].text} );
+  const stream = await conversationalRetrievalChain.stream({
+    messages: query,
+    chat_history: JSON.stringify(conversationLog),
+    tool_response: JSON.stringify(tool_response),
+    tool_response_history: JSON.stringify(toolLog),
+    input: query?.content,
+  });
 
   // Add user's message to chat history after using to generate response
   conversationLog.history.push({ role: 'user', content: query?.content[0].text as string });
@@ -160,5 +186,6 @@ export const POST = async (request: Request) => {
     },
   });
 
-    return LangChainAdapter.toDataStreamResponse(transformedStream);
-  }
+
+  return LangChainAdapter.toDataStreamResponse(transformedStream);
+}
