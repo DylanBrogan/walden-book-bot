@@ -19,6 +19,7 @@
     "@microsoft/applicationinsights-react-js": "^17.3.4",
     "@microsoft/applicationinsights-web": "^3.3.4",
     "ai": "^3.4.28",
+    "axios": "^1.7.8",
     "next": "^14.2.15",
     "react": "^18",
     "react-dom": "^18",
